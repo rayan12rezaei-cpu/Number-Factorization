@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>درخت تجزیه به عوامل اول</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; font-family: Tahoma, Arial, sans-serif;
+    background: #f5f7fb; color: #172033; display: flex; justify-content: center;
+    padding: 28px 16px;
+  }
+  .app { width: min(1050px, 100%); }
+  .card {
+    background: white; border: 1px solid #e5e9f2; border-radius: 20px;
+    box-shadow: 0 10px 35px rgba(30,45,80,.08); padding: 24px;
+  }
+  h1 { margin: 0 0 8px; font-size: 27px; }
+  .sub { margin: 0 0 22px; color: #697386; }
+  .controls { display: flex; gap: 10px; flex-wrap: wrap; }
+  input {
+    flex: 1; min-width: 210px; padding: 13px 15px; border: 1px solid #ccd3e0;
+    border-radius: 12px; font-size: 17px; outline: none;
+  }
+  input:focus { border-color: #667eea; box-shadow: 0 0 0 3px rgba(102,126,234,.12); }
+  button {
+    border: 0; border-radius: 12px; padding: 12px 20px; font-size: 16px;
+    cursor: pointer; background: #4f46e5; color: white;
+  }
+  button.secondary { background: #e9edf5; color: #253047; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .message { min-height: 24px; margin-top: 12px; color: #b42318; }
+  .tree-wrap {
+    margin-top: 18px; overflow: auto; min-height: 300px; padding: 25px 10px;
+    border: 1px dashed #d7ddea; border-radius: 16px; background: #fbfcfe;
+  }
+  #tree {
+    position: relative; min-width: 760px; min-height: 270px;
+  }
+  .node {
+    position: absolute; transform: translateX(-50%);
+    min-width: 54px; height: 54px; padding: 0 12px;
+    border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    background: white; border: 2px solid #8792a8; font-weight: bold; font-size: 17px;
+    box-shadow: 0 5px 14px rgba(30,45,80,.10);
+    opacity: 0; transform: translateX(-50%) scale(.6);
+    transition: opacity .45s ease, transform .45s ease, border-color .3s, background .3s;
+    z-index: 2;
+  }
+  .node.show { opacity: 1; transform: translateX(-50%) scale(1); }
+  .node.prime { border-color: #16825d; background: #effaf5; color: #126746; }
+  .node.composite { border-color: #4f46e5; background: #f1f2ff; }
+  .edge {
+    position: absolute; height: 2px; background: #b9c1d1;
+    transform-origin: 0 50%; opacity: 0; transition: opacity .35s;
+    z-index: 1;
+  }
+  .edge.show { opacity: 1; }
+  .level-label { text-align: center; color: #8993a6; font-size: 13px; margin-top: 5px; }
+  .result {
+    margin-top: 18px; padding: 18px; border-radius: 16px; background: #f7f8fc;
+    display: none;
+  }
+  .result.show { display: block; animation: rise .5s ease; }
+  .factor-list { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
+  .factor {
+    padding: 7px 12px; border-radius: 10px; background: #effaf5;
+    color: #126746; border: 1px solid #bde6d3; font-weight: bold;
+  }
+  .formula {
+    direction: ltr; text-align: center; font-size: 24px; font-weight: bold;
+    padding: 12px; overflow-x: auto;
+  }
+  .status { margin-top: 10px; color: #697386; font-size: 14px; }
+  @keyframes rise { from { opacity:0; transform:translateY(8px) } to { opacity:1; transform:none } }
+  @media (max-width: 650px) {
+    h1 { font-size: 22px; }
+    .card { padding: 17px; }
+    #tree { min-width: 650px; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="card">
+    <h1>🌳 درخت تجزیه به عوامل اول</h1>
+    <p class="sub">یک عدد صحیح بزرگ‌تر از ۱ وارد کن؛ درخت به‌صورت مرحله‌به‌مرحله ساخته می‌شود.</p>
+
+    <div class="controls">
+      <input id="numberInput" type="number" min="2" step="1" value="60" placeholder="مثلاً 60">
+      <button id="factorBtn">تجزیه</button>
+      <button id="resetBtn" class="secondary">پاک کردن</button>
+    </div>
+    <div id="message" class="message"></div>
+
+    <div class="tree-wrap">
+      <div id="tree"></div>
+    </div>
+
+    <div id="status" class="status"></div>
+
+    <div id="result" class="result">
+      <strong>عوامل اول:</strong>
+      <div id="factors" class="factor-list"></div>
+      <div class="formula" id="formula"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const input = document.getElementById('numberInput');
+const factorBtn = document.getElementById('factorBtn');
+const resetBtn = document.getElementById('resetBtn');
+const tree = document.getElementById('tree');
+const result = document.getElementById('result');
+const factorsEl = document.getElementById('factors');
+const formulaEl = document.getElementById('formula');
+const message = document.getElementById('message');
+const statusEl = document.getElementById('status');
+
+let timer = null;
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function isPrime(n) {
+  if (n < 2) return false;
+  if (n % 2 === 0) return n === 2;
+  for (let d = 3; d * d <= n; d += 2) {
+    if (n % d === 0) return false;
+  }
+  return true;
+}
+
+function smallestFactor(n) {
+  if (n % 2 === 0) return 2;
+  for (let d = 3; d * d <= n; d += 2) {
+    if (n % d === 0) return d;
+  }
+  return n;
+}
+
+function buildTree(n) {
+  const root = { value:n, children:[] };
+  function split(node) {
+    if (isPrime(node.value)) return;
+    const a = smallestFactor(node.value);
+    const b = node.value / a;
+    node.children = [{value:a, children:[]}, {value:b, children:[]}];
+    split(node.children[0]);
+    split(node.children[1]);
+  }
+  split(root);
+  return root;
+}
+
+function collectLevels(root) {
+  const levels = [];
+  function walk(node, depth, indexPath) {
+    if (!levels[depth]) levels[depth] = [];
+    levels[depth].push({node, indexPath});
+    node.children.forEach((c, i) => walk(c, depth+1, indexPath + '-' + i));
+  }
+  walk(root, 0, '0');
+  return levels;
+}
+
+function layoutTree(root) {
+  const levels = collectLevels(root);
+  const width = Math.max(760, levels[levels.length-1].length * 105);
+  const levelGap = 100;
+  tree.style.width = width + 'px';
+  tree.style.height = (levels.length * levelGap + 70) + 'px';
+
+  const positions = new Map();
+
+  levels.forEach((items, depth) => {
+    const y = 32 + depth * levelGap;
+    const gap = width / (items.length + 1);
+    items.forEach((item, i) => {
+      const x = gap * (i + 1);
+      positions.set(item.node, {x, y});
+    });
+  });
+
+  return {levels, positions, levelGap};
+}
+
+function addNode(node, pos) {
+  const el = document.createElement('div');
+  el.className = 'node ' + (isPrime(node.value) ? 'prime' : 'composite');
+  el.textContent = node.value;
+  el.style.left = pos.x + 'px';
+  el.style.top = pos.y + 'px';
+  tree.appendChild(el);
+  return el;
+}
+
+function addEdge(parentPos, childPos) {
+  const edge = document.createElement('div');
+  edge.className = 'edge';
+  const dx = childPos.x - parentPos.x;
+  const dy = childPos.y - parentPos.y;
+  const len = Math.sqrt(dx*dx + dy*dy);
+  edge.style.left = parentPos.x + 'px';
+  edge.style.top = (parentPos.y + 27) + 'px';
+  edge.style.width = len + 'px';
+  edge.style.transform = `rotate(${Math.atan2(dy, dx)}rad)`;
+  tree.appendChild(edge);
+  return edge;
+}
+
+function collectPrimeFactors(root) {
+  const out = [];
+  function walk(n) {
+    if (isPrime(n.value)) out.push(n.value);
+    else n.children.forEach(walk);
+  }
+  walk(root);
+  return out.sort((a,b)=>a-b);
+}
+
+function makeFormula(n, factors) {
+  const counts = {};
+  factors.forEach(x => counts[x] = (counts[x] || 0) + 1);
+  return n + ' = ' + Object.entries(counts)
+    .map(([p,e]) => e === 1 ? p : `${p}<sup>${e}</sup>`)
+    .join(' × ');
+}
+
+async function factorize() {
+  clearUI();
+  const raw = input.value.trim();
+  const n = Number(raw);
+
+  if (!Number.isSafeInteger(n) || n < 2) {
+    message.textContent = 'لطفاً یک عدد صحیح بزرگ‌تر از ۱ وارد کن.';
+    return;
+  }
+
+  factorBtn.disabled = true;
+  resetBtn.disabled = true;
+
+  const root = buildTree(n);
+  const {levels, positions} = layoutTree(root);
+  const nodeEls = new Map();
+  const edgeEls = [];
+
+  // Create all nodes and edges, then reveal them level by level.
+  levels.forEach(items => items.forEach(({node}) => {
+    nodeEls.set(node, addNode(node, positions.get(node)));
+  }));
+
+  levels.forEach(items => items.forEach(({node}) => {
+    node.children.forEach(child => {
+      edgeEls.push({parent:node, child, el:addEdge(positions.get(node), positions.get(child))});
+    });
+  }));
+
+  await sleep(150);
+
+  for (let depth = 0; depth < levels.length; depth++) {
+    const items = levels[depth];
+    items.forEach(({node}) => nodeEls.get(node).classList.add('show'));
+
+    edgeEls.forEach(({parent, child, el}) => {
+      if (levels[depth].some(x => x.node === child)) el.classList.add('show');
+    });
+
+    statusEl.textContent = depth === 0
+      ? `شروع با عدد ${n}`
+      : `مرحله ${depth}: اعداد مرکب به عوامل کوچک‌تر شکسته شدند.`;
+
+    await sleep(700);
+  }
+
+  const factors = collectPrimeFactors(root);
+  factorsEl.innerHTML = '';
+  factors.forEach(p => {
+    const span = document.createElement('span');
+    span.className = 'factor';
+    span.textContent = p;
+    factorsEl.appendChild(span);
+  });
+
+  formulaEl.innerHTML = makeFormula(n, factors);
+  result.classList.add('show');
+  statusEl.textContent = 'تجزیه کامل شد؛ همهٔ برگ‌های درخت عدد اول هستند.';
+  factorBtn.disabled = false;
+  resetBtn.disabled = false;
+}
+
+function clearUI() {
+  if (timer) clearTimeout(timer);
+  tree.innerHTML = '';
+  result.classList.remove('show');
+  factorsEl.innerHTML = '';
+  formulaEl.innerHTML = '';
+  message.textContent = '';
+  statusEl.textContent = '';
+}
+
+factorBtn.addEventListener('click', factorize);
+resetBtn.addEventListener('click', () => {
+  clearUI();
+  input.focus();
+});
+input.addEventListener('keydown', e => {
+  if (e.key === 'Enter') factorize();
+});
+</script>
+</body>
+</html>
